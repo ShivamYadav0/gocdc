@@ -1,0 +1,95 @@
+
+version: '3.8'
+
+services:
+  mysql:
+    image: debezium/example-mysql:2.5
+    container_name: mysql
+    ports:
+      - 3307:3306
+    environment:
+      - MYSQL_ROOT_PASSWORD=debezium
+      - MYSQL_USER=mysqluser
+      - MYSQL_PASSWORD=mysqlpw
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.5.0
+    container_name: schema-registry
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:9092
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    depends_on:
+      - kafka
+
+  kafka:
+    build:
+      context: .
+      dockerfile: Dockerfile # Your KRaft Dockerfile
+    container_name: kafka
+    hostname: kafka
+    ports:
+      - 9093:9093
+    environment:
+      - CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9093
+
+  kafdrop:
+    image: obsidiandynamics/kafdrop
+    ports:
+      - "9001:9000"
+    environment:
+      - KAFKA_BROKERCONNECT=kafka:9092
+      # Add this so Kafdrop can try to show schema info (optional)
+      - SCHEMAREGISTRY_CONNECT=http://schema-registry:8081
+    depends_on:
+      - kafka
+
+  debezium:
+    # Use 'build' instead of 'image' to use your Custom Protobuf Dockerfile
+    build: 
+      context: .
+      dockerfile: Dockerfile.debezium # Name of the file we created in the previous step
+    container_name: debezium
+    depends_on:
+      - kafka
+      - mysql
+      - schema-registry
+    ports:
+      - 8083:8083
+    environment:
+      - BOOTSTRAP_SERVERS=kafka:9092
+      - GROUP_ID=1
+      - CONFIG_STORAGE_TOPIC=my_connect_configs
+      - OFFSET_STORAGE_TOPIC=my_connect_offsets
+      - STATUS_STORAGE_TOPIC=my_connect_statuses
+      - CONFIG_STORAGE_REPLICATION_FACTOR=1
+      - OFFSET_STORAGE_REPLICATION_FACTOR=1
+      - STATUS_STORAGE_REPLICATION_FACTOR=1
+      
+      # PROTOBUF CONVERTERS
+      - KEY_CONVERTER=io.confluent.connect.protobuf.ProtobufConverter
+      - KEY_CONVERTER_SCHEMA_REGISTRY_URL=http://schema-registry:8081
+      - VALUE_CONVERTER=io.confluent.connect.protobuf.ProtobufConverter
+      - VALUE_CONVERTER_SCHEMA_REGISTRY_URL=http://schema-registry:8081
+      
+      # Tell Connect where the custom JARs are located inside the container
+      - CONNECT_PLUGIN_PATH=/kafka/connect,/usr/share/confluent-hub-components
+      
+      - JAVA_OPTS=-Xms2g -Xmx4g 
+    mem_limit: 5g
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    ports:
+      - 6379:6379
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.11
+    container_name: clickhouse
+    ports:
+      - 8123:8123
+      - 9000:9000

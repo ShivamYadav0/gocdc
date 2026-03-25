@@ -1,0 +1,91 @@
+version: '3.8'
+
+
+services:
+  mysql:
+    image: debezium/example-mysql:2.5
+    container_name: mysql
+    ports:
+      - 3307:3306
+    environment:
+      - MYSQL_ROOT_PASSWORD=debezium
+      - MYSQL_USER=mysqluser
+      - MYSQL_PASSWORD=mysqlpw
+
+    volumes:
+      - ./init-db/01-mysql-schema.sql:/docker-entrypoint-initdb.d/01-mysql-schema.sql
+
+  kafka:
+    build:
+      context: .
+      dockerfile: Dockerfile # Points to your KRaft Dockerfile
+    container_name: kafka
+    hostname: kafka
+    ports:
+      - 9093:9093 # External access
+    environment:
+      - CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk
+      # Ensure internal listener is available for Debezium
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9093
+  kafdrop:
+    image: obsidiandynamics/kafdrop
+    ports:
+      - "9001:9000"
+    environment:
+      - KAFKA_BROKERCONNECT=kafka:9092
+    depends_on:
+      - kafka
+  debezium:
+    image: debezium/connect:2.5
+    container_name: debezium
+    depends_on:
+      - kafka
+      - mysql
+    ports:
+      - 8083:8083
+    environment:
+      - BOOTSTRAP_SERVERS=kafka:9092
+      - GROUP_ID=1
+      - CONFIG_STORAGE_TOPIC=my_connect_configs
+      - OFFSET_STORAGE_TOPIC=my_connect_offsets
+      - STATUS_STORAGE_TOPIC=my_connect_statuses
+      # Reliability settings for Debezium in KRaft
+      - CONFIG_STORAGE_REPLICATION_FACTOR=1
+      - OFFSET_STORAGE_REPLICATION_FACTOR=1
+      - STATUS_STORAGE_REPLICATION_FACTOR=1
+      - KEY_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+      - VALUE_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+      - JAVA_OPTS=-Xms2g -Xmx4g 
+    mem_limit: 5g
+
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    ports:
+      - 6379:6379
+      
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    depends_on:
+      - clickhouse
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.11
+    container_name: clickhouse
+    ports:
+      - 8123:8123
+      - 9000:9000
+    volumes:
+      - ./init-db/02-clickhouse-schema.sql:/docker-entrypoint-initdb.d/02-clickhouse-schema.sql
+
+
+
+

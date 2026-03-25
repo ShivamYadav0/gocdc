@@ -1,0 +1,15 @@
+FROM quay.io/debezium/connect:2.5
+
+# 1. Switch to root to install tools
+USER root
+RUN microdnf install -y unzip
+
+# 2. Install Confluent Hub Client (if not present) and the Protobuf Converter
+# This automatically handles downloading all required JARs (Protobuf, Guava, etc.)
+RUN curl -L -O https://client.hub.confluent.io/confluent-hub-client-latest.tar.gz && \
+    tar -xvf confluent-hub-client-latest.tar.gz && \
+    bin/confluent-hub install --no-prompt confluentinc/kafka-connect-protobuf-converter:7.5.0
+
+# 3. Add any additional database drivers if needed (Postgres is already there)
+# 4. Switch back to the 'kafka' user for security
+USER kafka
