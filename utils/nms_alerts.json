@@ -1,0 +1,546 @@
+{
+  "name": "NMS Pipeline Alerts",
+  "interval": "1m",
+  "rules": [
+    {
+      "title": "NMS: Pipeline Silent Freeze",
+      "condition": "C",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "prometheus",
+          "model": {
+            "expr": "time() - min(nms_clickhouse_last_commit_timestamp_seconds) > 60",
+            "refId": "A"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "datasource": {
+              "type": "__expr__",
+              "uid": "__expr__"
+            },
+            "conditions": [
+              {
+                "evaluator": {
+                  "params": [
+                    0
+                  ],
+                  "type": "gt"
+                },
+                "operator": {
+                  "type": "and"
+                },
+                "query": {
+                  "params": [
+                    "A"
+                  ]
+                },
+                "reducer": {
+                  "type": "last"
+                },
+                "type": "query"
+              }
+            ]
+          }
+        }
+      ],
+      "for": "1m",
+      "annotations": {
+        "summary": "No ClickHouse commit in >60s \u2014 pipeline may be frozen",
+        "description": "The most recently successful ClickHouse batch commit is more than 60 seconds old. This is the primary indicator of the 'Invisible Ingestion Gap': Go workers appear healthy (metrics still scraping) but no data is reaching the DB. Immediate check: nms_clickhouse_insert_timeouts_total, nms_event_channel_utilization.",
+        "runbook_url": ""
+      },
+      "labels": {
+        "severity": "critical",
+        "team": "nms-platform"
+      },
+      "noDataState": "NoData",
+      "execErrState": "Alerting"
+    },
+    {
+      "title": "NMS: ClickHouse INSERT Timeout Storm",
+      "condition": "C",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "prometheus",
+          "model": {
+            "expr": "sum(rate(nms_clickhouse_insert_timeouts_total[2m])) > 0.5",
+            "refId": "A"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "datasource": {
+              "type": "__expr__",
+              "uid": "__expr__"
+            },
+            "conditions": [
+              {
+                "evaluator": {
+                  "params": [
+                    0
+                  ],
+                  "type": "gt"
+                },
+                "operator": {
+                  "type": "and"
+                },
+                "query": {
+                  "params": [
+                    "A"
+                  ]
+                },
+                "reducer": {
+                  "type": "last"
+                },
+                "type": "query"
+              }
+            ]
+          }
+        }
+      ],
+      "for": "2m",
+      "annotations": {
+        "summary": "ClickHouse INSERT operations are timing out (>0.5/s over 2m)",
+        "description": "Go context.WithTimeout(2s) is firing on ClickHouse INSERTs at a sustained rate. Root cause is usually a background Part Merge saturating disk I/O, or insert_quorum misconfiguration. Mitigation: (1) increase BatchSize to reduce INSERT IOPS; (2) check `system.merges` in ClickHouse; (3) consider async_insert mode.",
+        "runbook_url": ""
+      },
+      "labels": {
+        "severity": "critical",
+        "team": "nms-platform"
+      },
+      "noDataState": "NoData",
+      "execErrState": "Alerting"
+    },
+    {
+      "title": "NMS: Channel Backpressure \u2014 HoL Blocking Risk",
+      "condition": "C",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "prometheus",
+          "model": {
+            "expr": "nms_event_channel_utilization > 0.90",
+            "refId": "A"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "datasource": {
+              "type": "__expr__",
+              "uid": "__expr__"
+            },
+            "conditions": [
+              {
+                "evaluator": {
+                  "params": [
+                    0
+                  ],
+                  "type": "gt"
+                },
+                "operator": {
+                  "type": "and"
+                },
+                "query": {
+                  "params": [
+                    "A"
+                  ]
+                },
+                "reducer": {
+                  "type": "last"
+                },
+                "type": "query"
+              }
+            ]
+          }
+        }
+      ],
+      "for": "2m",
+      "annotations": {
+        "summary": "Interval channel >90% full \u2014 Head-of-Line blocking imminent",
+        "description": "The aggregate shard channel fill ratio has been above 90% for 2 minutes. Producers (workers) will start blocking on channel send, stalling Kafka consumption. Check: nms_event_channel_blocked_total rate and nms_clickhouse_batch_duration_seconds. Fix: increase ShardCount or ShardChanSize; verify ClickHouse write throughput.",
+        "runbook_url": ""
+      },
+      "labels": {
+        "severity": "warning",
+        "team": "nms-platform"
+      },
+      "noDataState": "NoData",
+      "execErrState": "Alerting"
+    },
+    {
+      "title": "NMS: Channel Completely Full \u2014 Active Backpressure",
+      "condition": "C",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "prometheus",
+          "model": {
+            "expr": "nms_event_channel_utilization >= 1.0",
+            "refId": "A"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "datasource": {
+              "type": "__expr__",
+              "uid": "__expr__"
+            },
+            "conditions": [
+              {
+                "evaluator": {
+                  "params": [
+                    0
+                  ],
+                  "type": "gt"
+                },
+                "operator": {
+                  "type": "and"
+                },
+                "query": {
+                  "params": [
+                    "A"
+                  ]
+                },
+                "reducer": {
+                  "type": "last"
+                },
+                "type": "query"
+              }
+            ]
+          }
+        }
+      ],
+      "for": "30s",
+      "annotations": {
+        "summary": "All shard channels are 100% full \u2014 Kafka consumption is blocked",
+        "description": "All shards are at capacity. Go workers are blocked on channel sends. Kafka consumer lag is growing rapidly. Immediate action: check nms_clickhouse_insert_timeouts_total. If zero, the batcher is overwhelmed by volume \u2014 scale ShardCount. If non-zero, ClickHouse is the bottleneck \u2014 see INSERT timeout runbook.",
+        "runbook_url": ""
+      },
+      "labels": {
+        "severity": "critical",
+        "team": "nms-platform"
+      },
+      "noDataState": "NoData",
+      "execErrState": "Alerting"
+    },
+    {
+      "title": "NMS: Kafka Consumer Lag > 30s",
+      "condition": "C",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "prometheus",
+          "model": {
+            "expr": "nms_kafka_consumer_lag_seconds > 30",
+            "refId": "A"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "datasource": {
+              "type": "__expr__",
+              "uid": "__expr__"
+            },
+            "conditions": [
+              {
+                "evaluator": {
+                  "params": [
+                    0
+                  ],
+                  "type": "gt"
+                },
+                "operator": {
+                  "type": "and"
+                },
+                "query": {
+                  "params": [
+                    "A"
+                  ]
+                },
+                "reducer": {
+                  "type": "last"
+                },
+                "type": "query"
+              }
+            ]
+          }
+        }
+      ],
+      "for": "3m",
+      "annotations": {
+        "summary": "Kafka consumer is >30s behind real-time",
+        "description": "The gap between message event_time and wall clock has exceeded 30 seconds. This is an early signal of downstream saturation (channel full or slow CH writes). Correlate with nms_event_channel_utilization and nms_processor_workers_active.",
+        "runbook_url": ""
+      },
+      "labels": {
+        "severity": "warning",
+        "team": "nms-platform"
+      },
+      "noDataState": "NoData",
+      "execErrState": "Alerting"
+    },
+    {
+      "title": "NMS: High Processing Error Rate",
+      "condition": "C",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "prometheus",
+          "model": {
+            "expr": "sum(rate(nms_processor_errors_total[5m])) > 5",
+            "refId": "A"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "datasource": {
+              "type": "__expr__",
+              "uid": "__expr__"
+            },
+            "conditions": [
+              {
+                "evaluator": {
+                  "params": [
+                    0
+                  ],
+                  "type": "gt"
+                },
+                "operator": {
+                  "type": "and"
+                },
+                "query": {
+                  "params": [
+                    "A"
+                  ]
+                },
+                "reducer": {
+                  "type": "last"
+                },
+                "type": "query"
+              }
+            ]
+          }
+        }
+      ],
+      "for": "2m",
+      "annotations": {
+        "summary": "Processing errors >5/s sustained for 2 minutes",
+        "description": "A sustained error rate of >5/s across all error types. Break down by label: type='json_unmarshal' \u2192 malformed Debezium event schema; type='redis' \u2192 Redis latency/connectivity issue; type='clickhouse' \u2192 ClickHouse prepare/send failure.",
+        "runbook_url": ""
+      },
+      "labels": {
+        "severity": "warning",
+        "team": "nms-platform"
+      },
+      "noDataState": "NoData",
+      "execErrState": "Alerting"
+    },
+    {
+      "title": "NMS: Redis p95 Latency > 50ms",
+      "condition": "C",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "prometheus",
+          "model": {
+            "expr": "histogram_quantile(0.95,   sum(rate(nms_redis_operation_duration_seconds_bucket[5m])) by (le, operation)) > 0.05",
+            "refId": "A"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "datasource": {
+              "type": "__expr__",
+              "uid": "__expr__"
+            },
+            "conditions": [
+              {
+                "evaluator": {
+                  "params": [
+                    0
+                  ],
+                  "type": "gt"
+                },
+                "operator": {
+                  "type": "and"
+                },
+                "query": {
+                  "params": [
+                    "A"
+                  ]
+                },
+                "reducer": {
+                  "type": "last"
+                },
+                "type": "query"
+              }
+            ]
+          }
+        }
+      ],
+      "for": "3m",
+      "annotations": {
+        "summary": "Redis p95 operation latency has exceeded 50ms",
+        "description": "A Redis GET or SET is taking >50ms at the 95th percentile. Since every Kafka message requires 1 GET + 1 SET, this directly limits throughput to a max of ~20 msg/s per worker. Check Redis memory, eviction policy, and network.",
+        "runbook_url": ""
+      },
+      "labels": {
+        "severity": "warning",
+        "team": "nms-platform"
+      },
+      "noDataState": "NoData",
+      "execErrState": "Alerting"
+    },
+    {
+      "title": "NMS: Mass Node Outage \u2014 >100 Nodes DOWN",
+      "condition": "C",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "prometheus",
+          "model": {
+            "expr": "nms_active_down_nodes > 100",
+            "refId": "A"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "datasource": {
+              "type": "__expr__",
+              "uid": "__expr__"
+            },
+            "conditions": [
+              {
+                "evaluator": {
+                  "params": [
+                    0
+                  ],
+                  "type": "gt"
+                },
+                "operator": {
+                  "type": "and"
+                },
+                "query": {
+                  "params": [
+                    "A"
+                  ]
+                },
+                "reducer": {
+                  "type": "last"
+                },
+                "type": "query"
+              }
+            ]
+          }
+        }
+      ],
+      "for": "1m",
+      "annotations": {
+        "summary": "More than 100 network nodes are currently in DOWN state",
+        "description": "The number of nodes tracked as DOWN in Redis has exceeded 100. This may indicate a genuine network event (MPLS core failure, upstream BGP issue) or a trap storm / deduplication failure in the upstream alarm normalizer.",
+        "runbook_url": ""
+      },
+      "labels": {
+        "severity": "critical",
+        "team": "nms-platform"
+      },
+      "noDataState": "NoData",
+      "execErrState": "Alerting"
+    },
+    {
+      "title": "NMS: E2E Pipeline Latency p95 > 10s",
+      "condition": "C",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "prometheus",
+          "model": {
+            "expr": "histogram_quantile(0.95,   sum(rate(nms_pipeline_e2e_latency_seconds_bucket[5m])) by (le)) > 10",
+            "refId": "A"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "datasource": {
+              "type": "__expr__",
+              "uid": "__expr__"
+            },
+            "conditions": [
+              {
+                "evaluator": {
+                  "params": [
+                    0
+                  ],
+                  "type": "gt"
+                },
+                "operator": {
+                  "type": "and"
+                },
+                "query": {
+                  "params": [
+                    "A"
+                  ]
+                },
+                "reducer": {
+                  "type": "last"
+                },
+                "type": "query"
+              }
+            ]
+          }
+        }
+      ],
+      "for": "3m",
+      "annotations": {
+        "summary": "End-to-end pipeline latency p95 has exceeded 10 seconds",
+        "description": "The 95th percentile time from Kafka message enqueue to ClickHouse commit is above 10 seconds. Outage intervals in the DB are significantly delayed vs real time. Correlate: nms_clickhouse_batch_duration_seconds, nms_event_channel_utilization, nms_kafka_consumer_lag_seconds.",
+        "runbook_url": ""
+      },
+      "labels": {
+        "severity": "warning",
+        "team": "nms-platform"
+      },
+      "noDataState": "NoData",
+      "execErrState": "Alerting"
+    }
+  ]
+}

@@ -15,6 +15,26 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
 	"github.com/sirupsen/logrus"
+	"github.com/prometheus/client_golang/prometheus"
+"github.com/prometheus/client_golang/prometheus/promauto"
+"github.com/prometheus/client_golang/prometheus/promhttp"
+"net/http"
+)
+var (
+    opsProcessed = promauto.NewCounterVec(prometheus.CounterOpts{
+        Name: "nms_processor_messages_total",
+        Help: "The total number of Kafka messages processed",
+    }, []string{"topic", "status"})
+
+    processingErrors = promauto.NewCounterVec(prometheus.CounterOpts{
+        Name: "nms_processor_errors_total",
+        Help: "Processing errors",
+    }, []string{"type"})
+	clickhouseBatchLatency = promauto.NewHistogram(prometheus.HistogramOpts{
+        Name:    "nms_clickhouse_batch_duration_seconds",
+        Help:    "Latency of ClickHouse batch inserts",
+        Buckets: []float64{.05, .1, .5, 1, 2, 5},
+    })
 )
 
 const (
@@ -100,6 +120,15 @@ func main() {
 	batcherDone := make(chan struct{})
 	go runClickHouseBatcher(ctx, ch, intervalChan, batcherDone)
 
+
+	go func() {
+        http.Handle("/metrics", promhttp.Handler())
+        log.Infof("Starting Prometheus metrics server on :2112")
+        if err := http.ListenAndServe(":2112", nil); err != nil {
+            log.Errorf("Metrics server failed: %v", err)
+        }
+    }()
+
 	// Start Workers
 	for i := 0; i < WorkerCount; i++ {
 		wg.Add(1)
@@ -142,6 +171,7 @@ func processKafkaStream(ctx context.Context, workerID int, r *kafka.Reader, rdb 
 		}
 		//log.Infof("Worker %d received raw message: %s", workerID, string(m.Value))
 		atomic.AddInt64(&msgCounter, 1)
+		
 
 		var env DebeziumPayload
 		if err := json.Unmarshal(m.Value, &env); err != nil {
@@ -152,6 +182,7 @@ func processKafkaStream(ctx context.Context, workerID int, r *kafka.Reader, rdb 
 		if data.NodeID == "" {
 			continue
 		}
+		opsProcessed.WithLabelValues(data.NodeID, "ok").Inc()
 
 		// Core Logic: State Machine
 		eventTime := time.UnixMilli(data.EventTime)
@@ -167,6 +198,7 @@ func processKafkaStream(ctx context.Context, workerID int, r *kafka.Reader, rdb 
 		if err == nil {
 			var prev NodeState
 			if err := json.Unmarshal([]byte(val), &prev); err == nil {
+				processingErrors.WithLabelValues("json_unmarshal").Inc()
 				// Transition: If previous was DOWN and current is UP, calculate interval
 				if prev.Status == "DOWN" && currentStatus == "UP" {
 					dur := eventTime.Sub(prev.LastSeenAt).Seconds()

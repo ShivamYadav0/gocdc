@@ -1,0 +1,44 @@
+groups:
+- name: nms-processor-alerts
+  rules:
+
+  - alert: HighErrorRate
+    expr: rate(nms_processor_errors_total[5m]) > 5
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High error rate in NMS Processor"
+      description: "{{ $value }} errors/sec detected"
+
+  - alert: HighKafkaLatency
+    expr: histogram_quantile(0.95, sum(rate(nms_processor_kafka_message_duration_seconds_bucket[5m])) by (le)) > 0.5
+    for: 3m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High Kafka message processing latency"
+
+  - alert: ClickHouseBatchSlow
+    expr: histogram_quantile(0.99, sum(rate(nms_clickhouse_batch_duration_seconds_bucket[5m])) by (le)) > 3
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "ClickHouse batch inserts are too slow"
+
+  - alert: ManyNodesDown
+    expr: nms_active_down_nodes > 50
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Large number of nodes are DOWN"
+
+  - alert: KafkaConsumerLag
+    expr: nms_kafka_consumer_lag_seconds > 30
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Kafka consumer is lagging"

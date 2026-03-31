@@ -13,3 +13,4 @@ RUN curl -L -O https://client.hub.confluent.io/confluent-hub-client-latest.tar.g
 # 3. Add any additional database drivers if needed (Postgres is already there)
 # 4. Switch back to the 'kafka' user for security
 USER kafka
+#Doesnt require this require in case of compose.old.ymli
