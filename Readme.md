@@ -166,7 +166,62 @@ go test ./...
 - Debezium for CDC capabilities
 - ClickHouse for fast analytics
 - Prometheus & Grafana for monitoring
+```mermaid
+---
+config:
+  layout: dagre
+---
+flowchart TB
+ subgraph subGraph_Device["Edge Layer (Fleet)"]
+        DEV1(("Device A"))
+        DEV2(("Device B"))
+        DEVN(("Device ...n"))
+        LB{"Load Balancer"}
+        SVC["Trap/Alarm Service"]
+  end
+ subgraph subGraph0["Transactional Layer (Source)"]
+        B["Debezium Connector"]
+        A["MySQL"]
+  end
+ subgraph subGraph1["Streaming Backbone"]
+        C{"Kafka Cluster"}
+        D["Kafdrop UI"]
+  end
+ subgraph subGraph2["High-Speed Ingestion (Go)"]
+        E["Go Processor"]
+        F[("Redis")]
+        G(("Prometheus"))
+  end
+ subgraph subGraph3["Analytical Layer (Sink)"]
+        H[("ClickHouse")]
+  end
+ subgraph subGraph4["Observability Pane"]
+        I["Grafana"]
+  end
+    DEV1 -- Traps --> LB
+    DEV2 -- Traps --> LB
+    DEVN -- Traps --> LB
+    LB -- Aggregate --> SVC
+    SVC -- Insert --> A
+    A -- Binlog Events --> B
+    B -- JSON Events --> C
+    C -. Inspect .-> D
+    C -- Consumer Group --> E
+    E -- State Mgmt --> F
+    E -- Instrumented --> G
+    E -- Batch INSERT --> H
+    G -- PromQL --> I
+    H -- SQL Analytics --> I
 
+    style DEV1 fill:#e74c3c,color:#fff
+    style DEV2 fill:#e74c3c,color:#fff
+    style DEVN fill:#e74c3c,color:#fff
+    style LB fill:#3498db,color:#fff
+    style SVC fill:#2ecc71,color:#fff
+    style B fill:#005af0,color:#fff
+    style G fill:#ff9900,stroke:#333,stroke-width:2px
+    style I fill:#f90,stroke:#333,stroke-width:4px
+```
 
 
 
